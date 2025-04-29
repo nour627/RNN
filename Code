@@ -1,0 +1,101 @@
+import numpy as np
+import random
+
+np.random.seed(42)
+random.seed(42)
+
+vocab = ["I", "am", "from", "Portsaid"]
+vocab_size = len(vocab)
+word_to_one_hot = {word: np.eye(vocab_size)[i] for i, word in enumerate(vocab)}
+
+sequence = ["I", "am", "from", "Portsaid"]
+inputs = [word_to_one_hot[word] for word in sequence[:3]]
+target = word_to_one_hot[sequence[3]]
+
+input_size = vocab_size
+hidden_size = 10
+output_size = vocab_size
+
+Wxh = np.random.randn(hidden_size, input_size) * 0.01
+Whh = np.random.randn(hidden_size, hidden_size) * 0.01
+Why = np.random.randn(output_size, hidden_size) * 0.01
+bh = np.zeros((hidden_size, 1))
+by = np.zeros((output_size, 1))
+
+def softmax(x):
+    exp_x = np.exp(x - np.max(x))
+    return exp_x / np.sum(exp_x)
+
+def forward_pass(inputs, h_prev):
+    xs, hs, ys, ps = {}, {}, {}, {}
+    hs[-1] = np.copy(h_prev)
+    for t in range(len(inputs)):
+        xs[t] = inputs[t].reshape(-1, 1)
+        hs[t] = np.tanh(np.dot(Wxh, xs[t]) + np.dot(Whh, hs[t-1]) + bh)
+        ys[t] = np.dot(Why, hs[t]) + by
+        ps[t] = softmax(ys[t])
+    return xs, hs, ys, ps
+
+def compute_loss(ps, target):
+    t = target.reshape(-1, 1)
+    return -np.sum(t * np.log(ps[len(ps) - 1]))
+
+def backward_pass(xs, hs, ps, target, learning_rate=0.01):
+    global Wxh, Whh, Why, bh, by
+    dWxh, dWhh, dWhy = np.zeros_like(Wxh), np.zeros_like(Whh), np.zeros_like(Why)
+    dbh, dby = np.zeros_like(bh), np.zeros_like(by)
+    dh_next = np.zeros_like(hs[0])
+
+    dy = np.copy(ps[len(ps) - 1])
+    dy -= target.reshape(-1, 1)
+
+    for t in reversed(range(len(inputs))):
+        dWhy += np.dot(dy, hs[t].T)
+        dby += dy
+        dh = np.dot(Why.T, dy) + dh_next
+        dh_raw = (1 - hs[t] ** 2) * dh
+        dWxh += np.dot(dh_raw, xs[t].T)
+        dWhh += np.dot(dh_raw, hs[t-1].T)
+        dbh += dh_raw
+        dh_next = np.dot(Whh.T, dh_raw)
+        dy = np.zeros_like(dy)
+
+    Wxh -= learning_rate * dWxh
+    Whh -= learning_rate * dWhh
+    Why -= learning_rate * dWhy
+    bh -= learning_rate * dbh
+    by -= learning_rate * dby
+
+    return dby
+
+h_prev = np.zeros((hidden_size, 1))
+learning_rate = 0.1
+
+xs, hs, ys, ps = forward_pass(inputs, h_prev)
+loss = compute_loss(ps, target)
+
+dby = backward_pass(xs, hs, ps, target, learning_rate)
+
+print("Forward Pass (Final Probabilities):")
+print(f"Probabilities: {ps[len(ps) - 1].T}")
+
+print("\nBackward Pass:")
+print(f"dby: {dby.T}")
+
+print("\nTraining (50 iterations):")
+h_prev = np.zeros((hidden_size, 1))
+for i in range(50):
+    xs, hs, ys, ps = forward_pass(inputs, h_prev)
+    loss = compute_loss(ps, target)
+    dby = backward_pass(xs, hs, ps, target, learning_rate)
+    h_prev = hs[len(inputs)-1]
+    if i % 25 == 0:
+        predicted_probs = ps[len(ps) - 1]
+        predicted_word = vocab[np.argmax(predicted_probs)]
+        print(f"Iteration {i}, Loss: {loss:.4f}, 4th Word: {predicted_word}")
+
+xs, hs, ys, ps = forward_pass(inputs, h_prev)
+predicted_probs = ps[len(ps) - 1]
+predicted_word = vocab[np.argmax(predicted_probs)]
+print(f"\nFinal 4th Word: {predicted_word}")
+print(f"Final Probability for Portsaid: {predicted_probs[3].item():.6f}")
